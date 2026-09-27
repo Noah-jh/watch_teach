@@ -1,18 +1,15 @@
-# Bootloader flow document
+# Update docs: integration/docs/bootloader_flow.md (add OTA steps & ymodem usage)
 
-See integration/bootloader/README.md for full implementation details.
+See bootloader/README.md for full details. Added quick YMODEM host example:
 
-This file gives a flow diagram and step checklist for bootloader and OTA validation.
+YMODEM host (linux) example using lrzsz:
+- Install: sudo apt-get install lrzsz
+- Send file: sx --ymodem image_with_header.bin > /dev/ttyUSB0 < /dev/ttyUSB0
 
-1) On boot: initialize UART for logs -> check APP at APP_ADDRESS -> if valid jump
-2) If invalid: check staging area -> if valid copy/activate -> jump
-3) If no valid app: enter OTA receive mode (YMODEM or ESP relay)
-4) After receiving: write to staging, verify CRC, mark VALID, reboot
-5) On new image activation: wait for APP_OK flag written by app, else rollback
+Windows: use TeraTerm -> File -> Transfer -> YMODEM -> Send -> select image_with_header.bin
 
-Validation checklist
-- Confirm bootloader prints on UART with version info
-- Confirm app at APP_ADDRESS runs and writes APP_OK metadata
-- Test receiving via YMODEM: run ymodem host to send compiled image
-- Test power-loss: interrupt power during write and verify bootloader recovers
+Bootloader flow for OTA:
+1. Bootloader waits for YMODEM or raw protocol
+2. Host triggers YMODEM send; bootloader writes to OTA_ADDRESS and acknowledges blocks
+3. After transfer, bootloader computes CRC and if valid installs image
 
