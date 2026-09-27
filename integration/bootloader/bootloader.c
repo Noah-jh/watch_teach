@@ -1,30 +1,18 @@
-/* Demo13 bootloader - improved bootloader.c
- * This bootloader implements:
- * - Read image header in staging or app slot
- * - Verify CRC32 (software implementation)
- * - Simple activation protocol: if staging image valid, copy to APP slot or mark active
- * - Jump to app if valid
- * - If no valid app, wait for OTA receive command over UART
- *
- * NOTE: Full YMODEM receive is complex; this implementation expects a host tool to send raw image with a small header
- * The repo contains a ymodem skeleton and guidance to use lrzsz or similar tools. This bootloader is intentionally
- * conservative: it will not erase app slot unless a complete and verified image has been received into staging.
- */
+# Update bootloader to use metadata and APP_OK mechanism (partial)
 
 #include "bootloader.h"
 #include "flash_ops.h"
 #include "crc32.h"
 #include "ymodem.h"
+#include "metadata.h"
 #include "stm32f4xx_hal.h"
 #include <string.h>
 #include <stdio.h>
 
-#define UART_BOOT HAL_UART_1
+extern UART_HandleTypeDef huart1;
 
 static void uart_log(const char *fmt, ...)
 {
-    // minimal uart log using HAL UART; assumes huart1 exists
-    extern UART_HandleTypeDef huart1;
     char buf[128];
     va_list args;
     va_start(args, fmt);
@@ -33,39 +21,40 @@ static void uart_log(const char *fmt, ...)
     HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
 }
 
-static int verify_image_at(uint32_t addr)
+static int verify_image_at(uint32_t addr, image_metadata_t *out_meta)
 {
-    // read header (first 16 bytes): magic(4), version(4), length(4), crc(4)
-    uint8_t hdr[16];
-    memcpy(hdr, (void*)addr, sizeof(hdr));
-    if (hdr[0] != 'W' || hdr[1] != 'T' || hdr[2] != 'F' || hdr[3] != 'W') return 0;
-    uint32_t len = *((uint32_t*)&hdr[8]);
-    uint32_t crc_expect = *((uint32_t*)&hdr[12]);
-    uint32_t crc = crc32_compute((uint8_t*)(addr + 16), len);
+    image_metadata_t meta;
+    memcpy(&meta, (void*)addr, sizeof(image_metadata_t));
+    if (meta.magic != 0x57465457U) return 0; // 'WTFW'
+    uint32_t len = meta.length;
+    uint32_t crc_expect = meta.crc;
+    uint32_t crc = crc32_compute((uint8_t*)(addr + sizeof(image_metadata_t)), len);
+    if (out_meta) *out_meta = meta;
     return crc == crc_expect;
 }
 
-static void copy_staging_to_app(void)
+static int install_staging(void)
 {
-    // Very simple copy routine; production should use page-wise erase and copy with verification.
+    // Read staging metadata
+    image_metadata_t meta;
+    if (metadata_read(&meta) != 0) return -1;
+    if (meta.state != IMAGE_STATE_VALID && meta.state != IMAGE_STATE_PENDING) return -1;
+
+    // Erase app area and copy
     uint32_t src = OTA_ADDRESS;
     uint32_t dst = APP_ADDRESS;
-    uint32_t hdr[4];
-    memcpy(hdr, (void*)src, sizeof(hdr));
-    uint32_t len = hdr[2]; // bytes len
+    uint32_t len = meta.length + sizeof(image_metadata_t);
+    if (flash_erase_region(dst, len) != 0) return -1;
 
-    // erase destination region as needed
-    flash_erase_region(dst, len + 32);
-
-    // program in halfword chunks
-    uint32_t remain = len + 16; // include header
-    uint32_t offset = 0;
-    while (remain > 0) {
-        uint16_t half = *(uint16_t*)(src + offset);
-        flash_program_halfword(dst + offset, half);
-        offset += 2;
-        remain -= 2;
+    for (uint32_t off = 0; off < len; off += 2) {
+        uint16_t half = *(uint16_t*)(src + off);
+        if (flash_program_halfword(dst + off, half) != 0) return -1;
     }
+
+    // mark metadata active
+    meta.state = IMAGE_STATE_ACTIVE;
+    if (metadata_write(&meta) != 0) return -1;
+    return 0;
 }
 
 void bootloader_main_loop(void)
@@ -73,38 +62,44 @@ void bootloader_main_loop(void)
     HAL_Init();
     SystemClock_Config();
 
-    // init UART for logs
     MX_USART1_UART_Init();
     uart_log("Bootloader start\r\n");
 
-    if (verify_image_at(APP_ADDRESS)) {
-        uart_log("Valid app found at APP slot. Jumping...\r\n");
+    // check app slot
+    image_metadata_t app_meta;
+    if (verify_image_at(APP_ADDRESS, &app_meta)) {
+        uart_log("Valid app found. Jumping...\r\n");
         bootloader_jump_to_app();
     }
 
-    uart_log("No valid app. Checking staging...\r\n");
-    if (verify_image_at(OTA_ADDRESS)) {
-        uart_log("Valid image in OTA staging. Installing...\r\n");
-        copy_staging_to_app();
-        uart_log("Install complete. Jumping to app...\r\n");
-        bootloader_jump_to_app();
-    }
-
-    uart_log("Entering OTA receive mode. Send image via YMODEM or raw protocol.\r\n");
-    // receive image into OTA_ADDRESS
-    extern UART_HandleTypeDef huart1;
-    if (ymodem_receive_and_write(&huart1, OTA_ADDRESS) == 0) {
-        uart_log("Receive complete. Verifying...\r\n");
-        if (verify_image_at(OTA_ADDRESS)) {
-            uart_log("Staging image valid. Installing...\r\n");
-            copy_staging_to_app();
-            uart_log("Install finished. Rebooting...\r\n");
+    uart_log("Checking staging...\r\n");
+    image_metadata_t stage_meta;
+    if (verify_image_at(OTA_ADDRESS, &stage_meta)) {
+        uart_log("Staging image valid. Installing...\r\n");
+        if (install_staging() == 0) {
+            uart_log("Install complete. Rebooting...\r\n");
             NVIC_SystemReset();
         } else {
-            uart_log("Staging image invalid (CRC mismatch).\r\n");
+            uart_log("Install failed.\r\n");
+        }
+    }
+
+    uart_log("Enter OTA mode (serial).\r\n");
+    if (ota_receive_simple(&huart1, OTA_ADDRESS, 120000) == 0) {
+        uart_log("OTA receive OK. Verify and install...\r\n");
+        if (verify_image_at(OTA_ADDRESS, &stage_meta)) {
+            // mark staging valid
+            stage_meta.state = IMAGE_STATE_VALID;
+            metadata_write(&stage_meta);
+            if (install_staging() == 0) {
+                uart_log("Install complete. Rebooting...\r\n");
+                NVIC_SystemReset();
+            }
+        } else {
+            uart_log("Received image invalid (CRC).\r\n");
         }
     } else {
-        uart_log("Receive failed or timed out.\r\n");
+        uart_log("OTA receive failed or timed out.\r\n");
     }
 
     while (1) {

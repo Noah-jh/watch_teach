@@ -1,6 +1,4 @@
-/* st7789_dma.c - DMA-based ST7789 driver
- * Uses HAL SPI TX DMA to send pixel data in tiles. On DMA complete, calls user callback.
- */
+/* Update st7789_dma to call user callback in IRQ context - ensure it's lightweight */
 
 #include "st7789.h"
 #include "hal_port.h"
@@ -37,9 +35,10 @@ int st7789_dma_start_transfer(const uint8_t *data, uint32_t len, void (*done_cb)
     return 0;
 }
 
+// This should be called from HAL_SPI_TxCpltCallback
 void st7789_dma_on_tx_complete(void)
 {
-    // Called from HAL_SPI_TxCpltCallback when SPI DMA completes
     HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_SET);
+    // call user callback (make sure it's quick)
     if (dma_done_cb) dma_done_cb();
 }

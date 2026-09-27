@@ -1,6 +1,4 @@
-/* demo12 DMA-based LVGL flush integration
- * Replaces the blocking flush with a DMA-driven, tiled flush. Uses a small tile buffer to keep RAM usage low.
- */
+/* Update LVGL DMA-driven flush to call lv_disp_flush_ready in task context when DMA completes */
 
 #include "main.h"
 #include "lvgl.h"
@@ -13,46 +11,37 @@ extern SPI_HandleTypeDef hspi1;
 static osThreadId_t lvglTaskHandle;
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t buf1[240 * 8]; // 8 lines buffer
-static volatile bool flush_in_progress = false;
+static volatile bool dma_flush_done_flag = false;
+static lv_disp_drv_t *saved_disp_drv = NULL;
 
-// DMA completion callback from driver -> must call lv_disp_flush_ready
+// DMA completion callback from driver
 static void dma_flush_done_cb(void)
 {
-    // lvgl will call flush ready from LVGL context; here we defer via lv_timer if needed
-    // But LVGL allows calling lv_disp_flush_ready from ISR context if LVGL is not reentrant.
-    // To be safe, post a flag and let the LVGL task call lv_disp_flush_ready.
-    flush_in_progress = false;
+    dma_flush_done_flag = true;
 }
 
 static void lvgl_disp_flush_cb(lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color_t *color_p)
 {
-    if (flush_in_progress) {
-        // Busy: tell LVGL we're done to avoid blocking (drop frame) - production should queue
+    if (saved_disp_drv != NULL) {
+        // previous flush still in progress - signal fail-safe
         lv_disp_flush_ready(disp_drv);
         return;
     }
 
-    // Convert area and color_p to raw RGB565 buffer if necessary; assume lv_color_t is 16-bit
+    // copy into buffer (tile). Production code should implement tiled transfer for large areas.
     uint32_t px_count = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1);
     uint32_t bytes = px_count * 2;
-
-    // Start DMA transfer (tile-by-tile recommended). For demo, send at most buf size.
-    uint32_t send_bytes = bytes;
-    if (send_bytes > sizeof(buf1)) send_bytes = sizeof(buf1);
-
-    memcpy(buf1, color_p, send_bytes);
-    flush_in_progress = true;
-
-    // initiate DMA transfer; the driver will call back on completion
-    if (st7789_dma_start_transfer((uint8_t*)buf1, send_bytes, dma_flush_done_cb) != 0) {
-        flush_in_progress = false;
-        lv_disp_flush_ready(disp_drv);
-        return;
+    if (bytes > sizeof(buf1)) {
+        // tile too large for buffer - fallback to simple blocking write (not ideal)
+        memcpy(buf1, color_p, sizeof(buf1));
+        st7789_dma_start_transfer((uint8_t*)buf1, sizeof(buf1), dma_flush_done_cb);
+    } else {
+        memcpy(buf1, color_p, bytes);
+        st7789_dma_start_transfer((uint8_t*)buf1, bytes, dma_flush_done_cb);
     }
 
-    // For now report ready immediately to avoid blocking LVGL loop; in production, call when DMA done
-    // We signal ready here but real system should call lv_disp_flush_ready() in dma_flush_done_cb after all tiles.
-    lv_disp_flush_ready(disp_drv);
+    // save disp driver to notify when DMA done
+    saved_disp_drv = disp_drv;
 }
 
 static void lvgl_task(void *arg)
@@ -62,7 +51,7 @@ static void lvgl_task(void *arg)
 
     lv_disp_draw_buf_init(&draw_buf, buf1, NULL, sizeof(buf1) / sizeof(lv_color_t));
 
-    lv_disp_drv_t disp_drv;
+    static lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
     disp_drv.flush_cb = lvgl_disp_flush_cb;
     disp_drv.draw_buf = &draw_buf;
@@ -85,6 +74,12 @@ static void lvgl_task(void *arg)
 
     for (;;) {
         lv_timer_handler();
+        // if DMA flush completed, notify LVGL in task context
+        if (dma_flush_done_flag && saved_disp_drv) {
+            dma_flush_done_flag = false;
+            lv_disp_flush_ready(saved_disp_drv);
+            saved_disp_drv = NULL;
+        }
         osDelay(5);
     }
 }
