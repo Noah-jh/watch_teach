@@ -1,8 +1,13 @@
 # Demo 04 README (ST7789 SPI LCD)
 
 Purpose
-- Validate ST7789 (or compatible) SPI LCD using SPI1 + DMA
+- Validate ST7789 (1.69" SPI LCD, 240x280 RGB) using SPI1 + DMA
 - Provide a flush primitive to integrate LVGL later
+
+Confirmed by user:
+- Panel size: 1.69 inch
+- Interface: SPI
+- Resolution: 240 x 280 RGB (use 16-bit 565 color mode)
 
 CubeMX required
 - SPI1 (Master), 8-bit
@@ -12,7 +17,7 @@ CubeMX required
 - FreeRTOS -> CMSIS V2
 
 Wiring (based on board mapping)
-- LCD VCC -> 3.3V (or module specified)
+- LCD VCC -> 3.3V (confirm module supports 3.3V)
 - LCD GND -> GND
 - SCL (SCK) -> PA5
 - SDA (MOSI) -> PA7
@@ -22,9 +27,10 @@ Wiring (based on board mapping)
 - RST -> PB1
 - BL -> PB2 (optional PWM)
 
-Notes
-- Confirm module controller is ST7789 (check silk/datasheet). If it's an 8080 parallel interface, adapt accordingly.
-- For large resolutions, use tiled DMA transfers to avoid exhausting RAM.
+Driver notes
+- Use 16-bit color (RGB565) when sending pixels
+- Panel rotation: check MADCTL if image appears rotated
+- For 240x280 use partial windowing with tiled DMA transfers to avoid large framebuffers
 
 Validation
 - Build and flash

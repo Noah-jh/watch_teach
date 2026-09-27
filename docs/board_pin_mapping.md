@@ -1,93 +1,12 @@
 # docs/board_pin_mapping.md
 
-# 开发板真实引脚映射（基于你提供的原理图）
+## Updates from user confirmation
+- Onboard LED: present (as documented earlier on PC13)
+- Onboard button: PA0 (the user confirmed PA0 is the board button)
 
-本文汇总你提供给我的开发板引脚定义，便于后续各模块按实际板子分配引脚，不再发生误用。
+Notes
+- PC13 remains tied to RTC/LED functions on some boards; user specifically confirmed PA0 is the onboard button, so demos that use a user button will use PA0 (ADC0 pin) only if code configures it as EXTI input. Be mindful: PA0 is also ADC0 and only 3.3V tolerant.
 
-## 1. 基础电源与控制引脚
-
-- 5V：外部 5V 电源输入
-- 3V3：输出/输入 3.3V
-- G：GND
-- VB：VBAT，备用电池输入
-- PC13：板载蓝色 LED / RTC 功能；需要确认实际板上是否同时用于用户按键
-- PC14：OSC32_IN
-- PC15：OSC32_OUT
-- NRST：复位
-- BOOT0：启动模式 0
-- BOOT1 / PB2：启动模式 1
-
-## 2. 左侧排针（25 -> 46）
-
-### 2.1 左侧排针，花括号中的功能均为可选/复用
-
-- PB12：SPI/I2S NSS2 / NSS4，T1_BKIN，SMBA2
-- PB13：SPI/I2S SCK2 / SCK4，T1_CH1N
-- PB14：SPI/I2S MISO2，SDIO SD_D6，T1_CH2N
-- PB15：SPI/I2S MOSI2，SDIO SD_CK，T1_CH3N
-- PA8：T1_CH1，SDIO SD_D1，USART1_CK，I2C3 SCL，MCO1
-- PA9：USB VBUS，T1_CH2，SDIO SD_D2，USART1_TX，I2C3 SMBA
-- PA10：USB FS_ID，T1_CH3，SPI/I2S MOSI5，USART1_RX
-- PA11：USB_FS_DM，T1_CH4，SPI/I2S MISO5，USART1_CTS / USART6_TX
-- PA12：USB_FS_DP，T1_ETR，SPI/I2S MOSI5，USART1_RTS / USART6_RX
-- PA15：JTDI，T2_CH1 / T2_ETR，SPI/I2S NSS1 / NSS3，USART1_TX（F411）
-- PB3：JTDO-SWO，T2_CH2，SPI/I2S SCK1/SCK3，I2C2 SDA
-- PB4：JTRST，T3_CH1，SPI/I2S MISO1/MISO3，SDIO D0，I2C3 SDA
-- PB5：T3_CH2，SPI/I2S MOSI1/MOSI3，SDIO D3，I2C1 SMBA
-- PB6：T4_CH1，USART1_TX，I2C1 SCL
-- PB7：T4_CH2，SDIO SD_D0，USART1_RX，I2C1 SDA
-- PB8：T4_CH3/T10_CH1，SPI/I2S MOSI5，SDIO SD_D4，I2C1 SCL / I2C3 SDA
-- PB9：T4_CH4/T11_CH1，SPI/I2S NSS2，SDIO SD_D5，I2C1 SDA / I2C2 SDA
-
-## 3. 右侧排针（21 -> 10）
-
-- PB10：T2_CH3，SPI/I2S SCK2，SDIO SD_D7，I2C2 SCL
-- PB1：ADC9，SPI/I2S NSS5，T1_CH3N / T3_CH4
-- PB0：ADC8，SPI/I2S SCK5，T1_CH2N / T3_CH3
-- PA7：ADC7，SPI/I2S MOSI1，T1_CH1N / T3_CH2
-- PA6：ADC6，SPI/I2S MISO1，SDIO SD_CMD，T1_BKIN / T3_CH1
-- PA5：ADC5，SPI/I2S SCK1，T2_CH1 / T2_ETR
-- PA4：ADC4，SPI/I2S NSS1/NSS3，USART2_CK
-- PA3：ADC3，USART2_RX，T2_CH4 / T5_CH4 / T9_CH2
-- PA2：ADC2，USART2_TX，T2_CH3 / T5_CH3 / T9_CH1
-- PA1：ADC1，SPI/I2S MOSI4，USART2_RTS，T2_CH2 / T5_CH2
-- PA0：ADC0，USART2_CTS，T2_CH1 / T2_ETR / T5_CH1，WKUP1
-
-## 4. SWD 调试接口
-
-- PA13：JTMS / SWDIO
-- PA14：JTCK / SWCLK
-
-## 5. 实际可用建议
-
-### 5.1 推荐固定给传感器总线
-- I2C1：PB6 / PB7（AHT21 / MPU6050 / OLED）
-
-### 5.2 推荐固定给 LCD / RFID
-- SPI1：PA5 / PA6 / PA7（SCK / MISO / MOSI）
-- CS：PA4（或 PA15，若需隔离）
-- DC：PB0
-- RST：PB1
-- BL：PB2
-
-### 5.3 推荐固定给调试/串口
-- USART1：PA9 / PA10（用于 printf / ESP8266 / HC‑05）
-
-### 5.4 推荐固定给 ADC
-- PA0：电池电压检测（必须分压，小于 3.3V）
-- PA1：MQ‑2 传感器输出（分压后）
-- PA2：摇杆 X
-- PA3：摇杆 Y
-
-### 5.5 推荐固定给 5V 模块
-- 舵机 / 风扇 / 大功率模块：独立 5V 电源 + 共地
-- 不能直接接 MCU 3.3V 引脚，尤其不能接 PA0 / PB5
-
-## 6. 关键注意事项
-
-- PA0 与 PB5 仅支持 3.3V
-- 所有 5V 模块都需要分压/转换或独立供电
-- 不要直接把 18650 绑到 MCU：必须先经过稳压/电源管理
-- 保证 GND 共地
-- 在 F411 上，所有信号必须在 3.3V 级别或经分压后接入
+Safety reminder
+- PA0 and PB5 only support 3.3V. Do not connect 5V signals to these pins.
 

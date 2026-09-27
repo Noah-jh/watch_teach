@@ -1,20 +1,18 @@
-# Demo 10 README (WT588F02 voice module)
+# Demo 10 README (WT588F02 voice module) - updated
+
+Confirmed model: WT588F02-8F-C (serial control)
 
 Purpose
-- Control WT588F02 module with UART or IO trigger to play audio clips
+- Control WT588F02 module with UART to play audio clips
 
 CubeMX
-- USART (for module control) or GPIO triggers
-- USART with sufficient baud rate as per module
+- USART (for module control) - use USART1 or USART2 depending on availability
 
 Wiring
-- Module VCC per module (3.3V or 5V), confirm
+- Module VCC per module (confirm whether 3.3V or 5V). Many WT588 boards accept 5V; check your board.
 - TX/RX to MCU UART (with level shifting if needed)
-- If module has PLAY pin, can drive via GPIO
+- If module has PLAY pin, can drive via GPIO as simple trigger
 
 Validation
-- Able to play sample clip with command
-- Handle busy/ack responses
-
-Notes
-- Refer to module datasheet for exact command frames
+- Able to play sample clip with command (per module manual)
+- Handle module ACK/Busy responses
