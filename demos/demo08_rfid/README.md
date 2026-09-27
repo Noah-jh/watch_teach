@@ -1,27 +1,24 @@
-# Demo 8：RFID / RC522 SPI
+# Demo 08 README (RFID RC522)
 
-## 目标
-验证 SPI 从设备、独立 CS、复位和 RFID UID 读取。模块型号必须先确认是 RC522/MFRC522 还是其它 RFID 芯片。
+Purpose
+- Read UID from RFID card using MFRC522
 
-## 典型 RC522 接线
-- 3.3V：3.3V
-- GND：GND
-- SCK：SPI SCK
-- MOSI：SPI MOSI
-- MISO：SPI MISO
-- SDA：CS
-- RST：GPIO
-- IRQ：可选 EXTI
+CubeMX
+- SPI1 (PA5/PA6/PA7)
+- GPIO for CS & RST
+- USART1 debug
 
-## CubeMX
-- SPI Master，8-bit，软件 NSS。
-- CS/RST 为 GPIO。
-- USART1 打印 UID。
+Wiring
+- VCC -> 3.3V
+- GND -> GND
+- SDA/SS -> PB12 (or chosen CS)
+- SCK -> PA5
+- MOSI -> PA7
+- MISO -> PA6
+- RST -> PB11
 
-## 验收
-- 能读到芯片版本寄存器。
-- 放入卡片后打印稳定 UID。
-- 移开卡片后状态回到 idle。
+Validation
+- Place card on reader, UID printed on serial
 
-## 注意
-RC522 通常是 3.3V 设备，不要使用 5V 供电或 5V 信号。
+Notes
+- Use existing open-source MFRC522 HAL driver as reference; adapt SPI transfer functions

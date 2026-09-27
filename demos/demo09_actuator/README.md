@@ -1,19 +1,22 @@
-# Demo 9：SG90 舵机与风扇 PWM
+# Demo 09 README (Servo & Fan)
 
-## SG90
-- PWM 频率：约 50 Hz。
-- 脉宽通常约 1 ms~2 ms 对应角度范围，实际需校准。
-- 舵机使用独立 5V 供电，MCU 与舵机共地。
+Purpose
+- Demonstrate servo control using PWM and fan control with MOSFET
 
-## CubeMX
-- TIM PWM 输出。
-- 计数周期设置为 20 ms。
-- 任务每次修改比较值后等待，不要在中断中做复杂处理。
+CubeMX
+- TIM1 for PWM (PA8 recommended)
+- GPIO for MOSFET gate (control fan)
+- USART1 debug
 
-## 风扇
-风扇不能直接接 MCU GPIO。使用 N 沟道 MOSFET 低侧驱动，并在感性负载两端设置合适的续流/保护器件。PWM 频率根据风扇和驱动电路选择。
+Wiring
+- Servo Vcc -> 5V independent supply
+- Servo GND -> common GND
+- Servo signal -> PA8 (PWM)
+- Fan + -> 5V, Fan - -> MOSFET drain, MOSFET source -> GND, Gate -> MCU GPIO
 
-## 验收
-- 舵机可移动到 0/90/180 度附近。
-- 风扇可以开关，PWM 占空比变化能改变转速。
-- MCU 不复位，电源不明显下陷。
+Validation
+- Servo sweeps 0..180 deg
+- Fan speed responds to PWM duty
+
+Notes
+- Use decoupling and sufficient current supply for servo

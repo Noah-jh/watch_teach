@@ -1,16 +1,20 @@
-# Demo 10：WT588F02 语音模块
+# Demo 10 README (WT588F02 voice module)
 
-## 目标
-将 Speaker 模块拆成：
-- `hal`：UART/GPIO/延时适配。
-- `driver`：命令帧、校验和、播放命令。
-- `handler`：业务状态、按键触发、播放队列。
+Purpose
+- Control WT588F02 module with UART or IO trigger to play audio clips
 
-## 开始前确认
-WT588F02-8S-C 的通信方式、波特率、命令格式和电源必须以该版本数据手册为准。不要套用其它 WT588 系列命令。
+CubeMX
+- USART (for module control) or GPIO triggers
+- USART with sufficient baud rate as per module
 
-## 验收
-1. 上电无异常发热。
-2. 发送单条播放命令成功。
-3. 按键事件通过队列触发播放。
-4. 播放任务不阻塞按键 ISR。
+Wiring
+- Module VCC per module (3.3V or 5V), confirm
+- TX/RX to MCU UART (with level shifting if needed)
+- If module has PLAY pin, can drive via GPIO
+
+Validation
+- Able to play sample clip with command
+- Handle busy/ack responses
+
+Notes
+- Refer to module datasheet for exact command frames
